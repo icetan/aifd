@@ -29,6 +29,10 @@ _run() {
   local new_sha=$(_sha "${files[@]}" <(echo "$cmd"))
 
   if [[ $sha != $new_sha ]]; then
+    if [[ -n $_dry ]]; then
+      _info "has changes, doing nothing due to dry run"
+      return
+    fi
     if (eval "set -ex; $cmd") >&2; then
       if dasel put string -f "$manifest" ".[$index].sha" "$new_sha"; then :
       else
@@ -44,10 +48,10 @@ _run() {
   fi
 }
 
-_entry() {
-  local _index=$1
-  local _entry_json=$(dasel select -w json -f "$manifest" ".[$_index]")
-  declare -a _files
+_read_files() {
+  local _entry_json=$1
+  local _files
+  local _has_err
   for _f in \
     $(dasel select -r json --plain -m ".files.[*]" <<<"$_entry_json" 2>/dev/null \
       || dasel select -r json --plain ".files" <<<"$_entry_json" 2>/dev/null \
@@ -56,29 +60,80 @@ _entry() {
     if _files+=($(compgen -G "$_f")); then :
     else
       _err "could not find file '$_f'"
-      return 1
+      _has_err=1
     fi
   done
-  IFS=$'\n' _files=($(sort <<<"${_files[*]}"))
+  IFS=$'\n' sort <<<"${_files[*]}"
   unset IFS
-  _run "$_index" "$_entry_json" "${_files[@]}" 2> >(_pref "${_files[*]}: " >&2)
+  if [[ -n $_has_err ]]; then
+    return 1
+  fi
+}
+
+_entry() {
+  local _index=$1
+  dasel select -w json -f "$manifest" ".[$_index]"
 }
 
 _read_manifest() {
-  _info "reading from $manifest"
+  local _index
+  local _entry_json
+  local _files
   (cd "$(dirname "$(realpath "$manifest")")"
-    declare -a _files
-    while read -r _index; do
-      _entry "$_index" 2> >(_pref "#$_index " >&2) || true
-    done < <(dasel select -m --plain -f "$manifest" '.-')
+    for _index in "$@"; do
+      _entry_json=$(_entry "$_index")
+      mapfile -t _files < <(_read_files "$_entry_json")
+      if [[ -n $_list_files ]]; then
+        IFS=$'\n' echo "${_files[*]}"
+        unset IFS
+      else
+        _run "$_index" "$_entry_json" "${_files[@]}" 2> >(_pref "#$_index ${_files[*]}: " >&2) || true
+      fi
+    done
   )
 }
 
-manifest=${1:-$(echo .aifd.* | cut -d " " -f1)}
+_read_indexes() {
+  dasel select -m --plain -f "$manifest" '.-'
+}
+
+_usage() {
+  echo >&2 "$*
+Usage: $(basename "$0") [OPTIONS] [FILE]
+
+Options:
+    -h          Print this message
+    -e INDEX    Run specific entry
+    -l          List input files
+    -n          Dry run
+    -d          Debug output
+"
+  exit 2
+}
+
+while getopts he:lnd opt; do
+  case $opt in
+    h|\?) _usage;;
+    e) _entries+=("$OPTARG");;
+    l) _list_files=1;;
+    n) _dry=1;;
+    d) _debug=1;;
+  esac
+done
+shift $((OPTIND - 1))
+
+if [ -n "$_debug" ]; then set -x; fi
+
+manifest=${1:-$(compgen -G ".aifd.*" | head -n1)}
 if [[ ! -f $manifest ]]; then
   _err "can't read '$manifest'"
   exit 1
 fi
 manifest=$(realpath "$manifest")
+_info "reading from $manifest"
 
-_read_manifest
+if [[ -z $_entries ]]; then
+  mapfile -t _entries < <(_read_indexes)
+fi
+
+_read_manifest "${_entries[@]}"
