@@ -7,16 +7,26 @@
 
   outputs = { self, nixpkgs, ... }:
     let
+      overlay = final: prev: {
+        aifd = import ./. { pkgs = prev; };
+      };
+
       call = system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = import nixpkgs { inherit system; overlays = [ overlay ]; };
         in
-        { default = import ./. { inherit pkgs; }; };
-    in
-    {
+        rec {
+          aifd = import ./. { inherit pkgs; };
+          default = aifd;
+        };
+
       packages = builtins.foldl'
         (acc: system: acc // { ${system} = call system; })
         { }
         [ "aarch64-darwin" "aarch64-linux" "i686-linux" "x86_64-darwin" "x86_64-linux" ];
+    in
+    {
+      inherit packages;
+      overlays.default = overlay;
     };
 }
