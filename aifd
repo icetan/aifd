@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+
+#
+# Anti Import from Derivation
+#
+
+set -eo pipefail
+
+_err() { echo >&2 "[ERROR] $*"; }
+_info() { echo >&2 "[INFO] $*"; }
+_pref() { stdbuf -oL -eL sed "s|^|$*|"; }
+
+_sha() {
+  cat "$@" | sha256sum | cut -d " " -f1 || true
+}
+
+_run() {
+  local index=$1
+  local entry_json=$2
+  local files=("${@:3}")
+  local cmd=$(dasel select -r json --plain --null ".cmd" <<<"$entry_json")
+
+  if [[ $cmd == "null" ]]; then
+    _err "no command specified"
+    return 1
+  fi
+
+  local sha=$(dasel select -r json --plain --null ".sha" <<<"$entry_json")
+  local new_sha=$(_sha "${files[@]}" <(echo "$cmd"))
+
+  if [[ $sha != $new_sha ]]; then
+    if (eval "set -ex; $cmd") >&2; then
+      if dasel put string -f "$manifest" ".[$index].sha" "$new_sha"; then :
+      else
+        _err "failed to update manifest file '$manifest'"
+        return 1
+      fi
+    else
+      _err "command failed (exit $?)"
+      return 1
+    fi
+  else
+    _info "no changes"
+  fi
+}
+
+_entry() {
+  local _index=$1
+  local _entry_json=$(dasel select -w json -f "$manifest" ".[$_index]")
+  declare -a _files
+  for _f in \
+    $(dasel select -r json --plain -m ".files.[*]" <<<"$_entry_json" 2>/dev/null \
+      || dasel select -r json --plain ".files" <<<"$_entry_json" 2>/dev/null \
+      || true)
+  do
+    if _files+=($(compgen -G "$_f")); then :
+    else
+      _err "could not find file '$_f'"
+      return 1
+    fi
+  done
+  IFS=$'\n' _files=($(sort <<<"${_files[*]}"))
+  unset IFS
+  _run "$_index" "$_entry_json" "${_files[@]}" 2> >(_pref "${_files[*]}: " >&2)
+}
+
+_read_manifest() {
+  _info "reading from $manifest"
+  (cd "$(dirname "$(realpath "$manifest")")"
+    declare -a _files
+    while read -r _index; do
+      _entry "$_index" 2> >(_pref "#$_index " >&2) || true
+    done < <(dasel select -m --plain -f "$manifest" '.-')
+  )
+}
+
+manifest=${1:-$(echo .aifd.* | cut -d " " -f1)}
+if [[ ! -f $manifest ]]; then
+  _err "can't read '$manifest'"
+  exit 1
+fi
+manifest=$(realpath "$manifest")
+
+_read_manifest
