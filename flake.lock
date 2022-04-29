@@ -17,7 +17,28 @@
     },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "src-block": "src-block"
+      }
+    },
+    "src-block": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1651408718,
+        "narHash": "sha256-YYOqR4AobnHaRZrbeMG21rZN9Iv6pt5lPc9SkOBqFyM=",
+        "owner": "icetan",
+        "repo": "src-block",
+        "rev": "e81feb12a82a99a2e6334752038ad2a167e1f6e8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "icetan",
+        "repo": "src-block",
+        "type": "github"
       }
     }
   },

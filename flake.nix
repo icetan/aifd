@@ -3,6 +3,8 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs";
+    src-block.url = "github:icetan/src-block";
+    src-block.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, nixpkgs, ... }:

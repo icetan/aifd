@@ -33,7 +33,13 @@ Exit Codes:
 
 _err() { [[ -z $* || -n $_quiet ]] || echo >&2 "$_pref[ERROR] $*"; }
 _info() { [[ -z $* || -n $_quiet ]] || echo >&2 "$_pref$*"; }
-__pref() { [[ -n $_quiet ]] || stdbuf -oL -eL sed "s|^|$_pref|"; }
+__pref() {
+  if [[ -n $_quiet ]]; then
+    cat 2>&1 >/dev/null;
+  else
+    stdbuf -oL -eL sed "s|^|$_pref|"
+  fi
+}
 
 _sha() {
   cat "$@" 2> >(_err $(cat /dev/stdin)) | sha256sum | cut -d " " -f1
