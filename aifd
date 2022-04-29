@@ -8,114 +8,205 @@ set -eo pipefail
 
 _usage() {
   echo >&2 "$*
-Usage: $(basename "$0") [OPTIONS] [FILE]
+Usage: $(basename "$0") [OPTIONS] [FILES]
 
 Options:
-    -h          Show this message
-    -e INDEX    Run specific entry
-    -l          Print input file paths
-    -m          Print manifest file path
-    -q          Quiet
-    -n          Dry run
-    -d          Debug output
+    -h        Show this message
+    -e INDEX  Run specific entry
+    -c        Continue even on entry failure
+    -l        Print input file paths
+    -m        Print manifest file path
+    -q        Quiet
+    -n        Dry run
+    -d        Debug output
+
+Exit Codes:
+    1         Error or failure
+    2         Input files has changes
+    8         This message
 "
-  exit 2
+  exit 8
 }
 
-_err() { [[ -n $_quiet ]] || echo >&2 "[ERROR] $*"; }
-_info() { [[ -n $_quiet ]] || echo >&2 "[INFO] $*"; }
-_pref() { stdbuf -oL -eL sed "s|^|$*|"; }
+_err() { [[ -z $* || -n $_quiet ]] || echo >&2 "$_pref[ERROR] $*"; }
+_info() { [[ -z $* || -n $_quiet ]] || echo >&2 "$_pref$*"; }
+__pref() { [[ -n $_quiet ]] || stdbuf -oL -eL sed "s|^|$_pref|"; }
 
 _sha() {
-  cat "$@" | sha256sum | cut -d " " -f1 || true
+  cat "$@" 2> >(_err $(cat /dev/stdin)) | sha256sum | cut -d " " -f1
 }
 
-_run() {
-  local index=$1
-  local entry_json=$2
-  local files=("${@:3}")
-  local cmd=$(dasel select -r json --plain --null ".cmd" <<<"$entry_json")
+_run_entry() {
+  local sha
+  local new_sha
+  local cmd
+  local files_rel
+  local ext=0
+  local pref=$_pref
+
+  _read_entry
+  _read_files
+
+  if [[ -n $_print_files ]]; then
+    realpath "${_files[@]}"
+  fi
+
+  if [[ -n $_print ]]; then
+    return
+  fi
+
+  cmd=$(dasel select -r json --plain --null ".cmd" <<<"$_entry_json")
 
   if [[ $cmd == "null" ]]; then
-    _err "no command specified"
+    _err "No command specified"
     return 1
   fi
 
-  local sha=$(dasel select -r json --plain --null ".sha" <<<"$entry_json")
-  local new_sha=$(_sha "${files[@]}" <(echo "$cmd"))
+  files_rel=($(realpath --relative-to="$_manifest_dir" "${_files[@]}"))
+  _pref="$pref< ${files_rel[@]}: "
+
+  sha=$(dasel select -r json --plain --null ".sha" <<<"$_entry_json")
+  new_sha=$(_sha "${_files[@]}" <(echo "$cmd")) || return $?
 
   if [[ $sha != $new_sha ]]; then
     if [[ -n $_dry ]]; then
-      _info "has changes, doing nothing due to dry run"
-      return
+      _info "Has changes, doing nothing due to dry run (-n)"
+      return 2
     fi
-    if (eval "set -ex; $cmd") >&2; then
-      if dasel put string -f "$manifest" ".[$index].sha" "$new_sha"; then :
+
+    (bash -c \
+      'index=$0; files=("$@"); set -xeo pipefail; '"$cmd" \
+      $_index "${_files[@]}"
+    ) 2>&1 | _pref="$pref> " __pref >&2 || ext=$?
+
+    if [[ $ext == 0 ]]; then
+      if dasel put string -f "$_manifest" ".[$_index].sha" "$new_sha"; then :
       else
-        _err "failed to update manifest file '$manifest'"
+        _err "Failed to update manifest file '$_manifest'"
         return 1
       fi
     else
-      _err "command failed (exit $?)"
+      _err "Command failed (exit $ext)"
       return 1
     fi
   else
-    _info "no changes"
+    _info "No changes"
   fi
 }
 
 _read_files() {
-  local _entry_json=$1
-  local _files
-  local _has_err
-  for _f in \
-    $(dasel select -r json --plain -m ".files.[*]" <<<"$_entry_json" 2>/dev/null \
-      || dasel select -r json --plain ".files" <<<"$_entry_json" 2>/dev/null \
-      || true)
-  do
-    if _files+=($(compgen -G "$_f")); then :
-    else
-      _err "could not find file '$_f'"
-      _has_err=1
-    fi
-  done
-  IFS=$'\n'; sort <<<"${_files[*]}"; unset IFS
-  if [[ -n $_has_err ]]; then
+  _files=($(
+    (dasel select -r json --plain -m ".files.[*]" <<<"$_entry_json" 2>/dev/null \
+    || dasel select -r json --plain ".files" <<<"$_entry_json" 2>/dev/null) \
+      | xargs -r -l1 sh -c 'realpath $0' 2>/dev/null | sort -u))
+  if [[ $? != 0 || -z $_files ]]; then
+    _err "Couldn't read input files"
     return 1
   fi
 }
 
-_entry() {
-  local _index=$1
-  dasel select -w json -f "$manifest" ".[$_index]"
+_read_entry() {
+  _entry_json=$(dasel select -w json -f "$_manifest" ".[$_index]" 2>/dev/null)
+  if [[ $? != 0 ]]; then
+    _err "Couldn't get entry #$_index"
+    return 1
+  fi
 }
 
-_read_manifest() {
-  local _index
-  local _entry_json
-  local _files
-  (cd "$(dirname "$(realpath "$manifest")")"
-    for _index in "$@"; do
-      _entry_json=$(_entry "$_index")
-      mapfile -t _files < <(_read_files "$_entry_json")
-      if [[ -n $_print_files ]]; then
-        realpath "${_files[@]}"
-      fi
-      if [[ -z $_print ]]; then
-        _run "$_index" "$_entry_json" "${_files[@]}" 2> >(_pref "#$_index ${_files[*]}: " >&2) || true
+_read_entries() {
+  if [[ -n $_only_entries ]]; then
+    _entries=("${_only_entries[@]}")
+  else
+    _entries=($(dasel select -m --plain -f "$_manifest" '.-'))
+  fi
+}
+
+_run_manifest() {
+  local has_err
+  local ext=0
+
+  if [[ ! -f $_manifest ]]; then
+    _err "Can't read manifest file '$_manifest'"
+    return 1
+  fi
+
+  _manifest_dir=$(dirname "$_manifest")
+  _manifest_rel=$(realpath --relative-to="$_pwd" "$_manifest")
+
+  if [[ -n $_print_manifest ]]; then
+    echo "$_manifest"
+  fi
+
+  _read_entries
+
+  _pref="$_manifest_rel"
+  (cd "$_manifest_dir"
+    for index in "${_entries[@]}"; do
+      ext=0
+      _index=$index
+      _pref="$_pref#$_index " _run_entry 2 || ext=$?
+      if [[ $ext != 0 ]]; then
+        if [[ -n $_continue ]]; then
+          _info " Continuing due to option (-c)"
+          has_err=$ext
+        elif [[ $ext == 2 ]]; then
+          _info " Stopping due to dry run (-n)"
+          return $ext
+        else
+          _info " Aborting due to failed entry execution"
+          return $ext
+        fi
       fi
     done
+    if [[ -n $has_err ]]; then
+      return $has_err
+    fi
   )
 }
 
-_read_indexes() {
-  dasel select -m --plain -f "$manifest" '.-'
+_main() {
+  local ext=0
+  local has_err
+
+  if [[ -z $_args ]]; then
+    _err "No manifest files given"
+    return 1
+  fi
+
+  if _manifests=$(realpath "${_args[@]}" | sort -ru); then :
+  else
+    _err "Can't resolve manifest files ${_args[*]}"
+  fi
+
+  if [[ -n $_only_entries && $(wc -l <<<"$_manifests") != 1 ]]; then
+    _err "Can't specify entries to run with multiple manifest files"
+    return 1
+  fi
+
+  while read -r manifest; do
+    ext=0
+    _manifest=$manifest
+
+    _run_manifest || ext=$?
+    if [[ $ext != 0 ]]; then
+      if [[ -n $_continue ]]; then
+        has_err=$ext
+      else
+        return $ext
+      fi
+    fi
+  done <<<"$_manifests"
+
+  if [[ -n $has_err ]]; then
+    return $has_err
+  fi
 }
 
-while getopts he:lmqnd opt; do
+while getopts he:clmqnd opt; do
   case $opt in
     h|\?) _usage;;
-    e) _entries+=("$OPTARG");;
+    e) _only_entries+=("$OPTARG");;
+    c) _continue=1;;
     l) _print=1; _print_files=1;;
     m) _print=1; _print_manifest=1;;
     q) _quiet=1;;
@@ -127,19 +218,12 @@ shift $((OPTIND - 1))
 
 if [ -n "$_debug" ]; then set -x; fi
 
-manifest=${1:-$(compgen -G ".aifd.*" | head -n1)}
-if [[ ! -f $manifest ]]; then
-  _err "can't read '$manifest'"
-  exit 1
-fi
-manifest=$(realpath "$manifest")
-_info "reading from $manifest"
-if [[ -n $_print_manifest ]]; then
-  echo "$manifest"
+_pre=
+_pwd=$PWD
+_args=("$@")
+
+if [[ -z $_args ]]; then
+  _args=($(find -name '.aifd.*'))
 fi
 
-if [[ -z $_entries ]]; then
-  mapfile -t _entries < <(_read_indexes)
-fi
-
-_read_manifest "${_entries[@]}"
+_main

@@ -3,10 +3,10 @@
 }: with pkgs;
 
 let
-  bins = [ coreutils gnused dasel ];
+  bins = [ coreutils findutils gnused dasel ];
 in
 runCommand "aifd" {
-  buildInputs = [ bashInteractive makeWrapper ] ++ bins;
+  buildInputs = [ bash makeWrapper ] ++ bins;
   execPath = "/bin/aifd";
 } ''
   mkdir -p $out/bin
