@@ -6,8 +6,24 @@
 
 set -eo pipefail
 
-_err() { echo >&2 "[ERROR] $*"; }
-_info() { echo >&2 "[INFO] $*"; }
+_usage() {
+  echo >&2 "$*
+Usage: $(basename "$0") [OPTIONS] [FILE]
+
+Options:
+    -h          Show this message
+    -e INDEX    Run specific entry
+    -l          Print input file paths
+    -m          Print manifest file path
+    -q          Quiet
+    -n          Dry run
+    -d          Debug output
+"
+  exit 2
+}
+
+_err() { [[ -n $_quiet ]] || echo >&2 "[ERROR] $*"; }
+_info() { [[ -n $_quiet ]] || echo >&2 "[INFO] $*"; }
 _pref() { stdbuf -oL -eL sed "s|^|$*|"; }
 
 _sha() {
@@ -82,9 +98,10 @@ _read_manifest() {
     for _index in "$@"; do
       _entry_json=$(_entry "$_index")
       mapfile -t _files < <(_read_files "$_entry_json")
-      if [[ -n $_list_files ]]; then
+      if [[ -n $_print_files ]]; then
         realpath "${_files[@]}"
-      else
+      fi
+      if [[ -z $_print ]]; then
         _run "$_index" "$_entry_json" "${_files[@]}" 2> >(_pref "#$_index ${_files[*]}: " >&2) || true
       fi
     done
@@ -95,25 +112,13 @@ _read_indexes() {
   dasel select -m --plain -f "$manifest" '.-'
 }
 
-_usage() {
-  echo >&2 "$*
-Usage: $(basename "$0") [OPTIONS] [FILE]
-
-Options:
-    -h          Print this message
-    -e INDEX    Run specific entry
-    -l          List input files
-    -n          Dry run
-    -d          Debug output
-"
-  exit 2
-}
-
-while getopts he:lnd opt; do
+while getopts he:lmqnd opt; do
   case $opt in
     h|\?) _usage;;
     e) _entries+=("$OPTARG");;
-    l) _list_files=1;;
+    l) _print=1; _print_files=1;;
+    m) _print=1; _print_manifest=1;;
+    q) _quiet=1;;
     n) _dry=1;;
     d) _debug=1;;
   esac
@@ -129,6 +134,9 @@ if [[ ! -f $manifest ]]; then
 fi
 manifest=$(realpath "$manifest")
 _info "reading from $manifest"
+if [[ -n $_print_manifest ]]; then
+  echo "$manifest"
+fi
 
 if [[ -z $_entries ]]; then
   mapfile -t _entries < <(_read_indexes)

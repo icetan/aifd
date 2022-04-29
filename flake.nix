@@ -13,7 +13,7 @@
 
       call = system:
         let
-          pkgs = import nixpkgs { inherit system; overlays = [ overlay ]; };
+          pkgs = import nixpkgs { inherit system; };
         in
         rec {
           aifd = import ./. { inherit pkgs; };
