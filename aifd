@@ -63,8 +63,7 @@ _read_files() {
       _has_err=1
     fi
   done
-  IFS=$'\n' sort <<<"${_files[*]}"
-  unset IFS
+  IFS=$'\n'; sort <<<"${_files[*]}"; unset IFS
   if [[ -n $_has_err ]]; then
     return 1
   fi
@@ -84,8 +83,7 @@ _read_manifest() {
       _entry_json=$(_entry "$_index")
       mapfile -t _files < <(_read_files "$_entry_json")
       if [[ -n $_list_files ]]; then
-        IFS=$'\n' echo "${_files[*]}"
-        unset IFS
+        realpath "${_files[@]}"
       else
         _run "$_index" "$_entry_json" "${_files[@]}" 2> >(_pref "#$_index ${_files[*]}: " >&2) || true
       fi
