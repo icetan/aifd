@@ -8,6 +8,30 @@ Only run command when specific files have changed and share state in repo.
 
 ## Usage
 
+<!--p[cat ./usage.txt | sed 's|\$(basename "\$0")|aifd|']-->
+```
+Usage: aifd [OPTIONS] [FILES]
+
+Options:
+    -h        Show this message
+    -e INDEX  Run specific entry
+    -c        Continue even on entry failure
+    -l        Print input file paths
+    -m        Print manifest file path
+    -q        Quiet
+    -n        Dry run
+    -d        Debug output
+
+Exit Codes:
+    1         Error or failure
+    2         Input files has changes
+    8         This message
+
+```
+<!--END[]-->
+
+## Example
+
 Make a Nix lock file when `yarn.lock` changes to avoid IFD's and keep lock-files
 in sync.
 

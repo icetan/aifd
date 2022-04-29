@@ -7,7 +7,8 @@
 set -eo pipefail
 
 _usage() {
-  echo >&2 "$*
+#:p[echo 'echo >&2 "$*';cat ./usage.txt; echo '"']:
+echo >&2 "$*
 Usage: $(basename "$0") [OPTIONS] [FILES]
 
 Options:
@@ -25,6 +26,8 @@ Exit Codes:
     2         Input files has changes
     8         This message
 "
+
+#:#
   exit 8
 }
 
@@ -80,7 +83,10 @@ _run_entry() {
     ) 2>&1 | _pref="$pref> " __pref >&2 || ext=$?
 
     if [[ $ext == 0 ]]; then
-      if dasel put string -f "$_manifest" ".[$_index].sha" "$new_sha"; then :
+      # Re-calculate input file hash again after run if they have changed
+      # during command execution.
+      new_sha=$(_sha "${_files[@]}" <(echo "$cmd"))
+      if [[ $? == 0 ]] && dasel put string -f "$_manifest" ".[$_index].sha" "$new_sha"; then :
       else
         _err "Failed to update manifest file '$_manifest'"
         return 1

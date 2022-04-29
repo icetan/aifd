@@ -1,0 +1,17 @@
+- cmd: |
+    export SB_STYLE=sh
+    nix run github:icetan/nixpkgs-overlay#src-block < aifd > ._tmp
+    mv ._tmp aifd
+    chmod +x aifd
+  files:
+  - aifd
+  - usage.txt
+  sha: ced40901128d437fe4c08ec3c2c9bb667abcf52f065404b163521bd8609aa0e8
+- cmd: |
+    export SB_STYLE=md
+    nix run github:icetan/nixpkgs-overlay#src-block < README.md > ._tmp
+    mv ._tmp README.md
+  files:
+  - README.md
+  - usage.txt
+  sha: 51a9ff354d46315b5704e6927bdcc6403ac8e475f90b0348e66a159ab93800fc
