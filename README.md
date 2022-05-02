@@ -15,14 +15,21 @@ Usage: aifd [OPTIONS] [FILES]
 Options:
     -h        Show this message
     -e INDEX  Run specific entry
-    -c        Continue even on entry failure
+    -c        Continue on entry failures
     -l        Print input file paths
     -m        Print manifest file path
     -q        Quiet
     -n        Dry run
     -d        Debug output
 
-Exit Codes:
+Entry properties:
+    cmd             Bash shell commands to execute
+    required_files  Files that are required to run entry
+    files           Files that are checked for changes
+    success         Don't abort on entry faliure
+    ignore          Skip entry
+
+Exit codes:
     1         Error or failure
     2         Input files has changes
     8         This message
