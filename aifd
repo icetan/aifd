@@ -14,9 +14,10 @@ Usage: $(basename "$0") [OPTIONS] [FILES]
 Options:
     -h        Show this message
     -e INDEX  Run specific entry
-    -c        Continue on entry failures
+    -f        Fail fast, halt on entry failure
     -l        Print input file paths
     -m        Print manifest file path
+    -u        Print only files from succesfull entries (use with -l and -m)
     -q        Quiet
     -n        Dry run
     -d        Debug output
@@ -62,6 +63,12 @@ _run_entry() {
   local ext=0
   local pref=$_pref
 
+  if [[ -z $dry ]]; then
+    _no_print=$_updated
+  else
+    _no_print=
+  fi
+
   _read_entry
 
   ignore=$(dasel select -r json --plain --null ".ignore" <<<"$_entry_json")
@@ -82,14 +89,6 @@ _run_entry() {
   fi
 
   _read_files
-
-  if [[ -n $_print_files ]]; then
-    realpath "${_files[@]}"
-  fi
-
-  if [[ -n $_print ]]; then
-    return
-  fi
 
   cmd=$(dasel select -r json --plain --null ".cmd" <<<"$_entry_json")
 
@@ -132,7 +131,8 @@ _run_entry() {
         return 1
       fi
     fi
-  else
+    _no_print=
+  else 
     _info "No changes"
   fi
 }
@@ -195,10 +195,6 @@ _run_manifest() {
   _manifest_dir=$(dirname "$_manifest")
   _manifest_rel=$(realpath --relative-to="$_pwd" "$_manifest")
 
-  if [[ -n $_print_manifest ]]; then
-    echo "$_manifest"
-  fi
-
   _read_entries
 
   _pref="$_manifest_rel"
@@ -208,16 +204,19 @@ _run_manifest() {
       _index=$index
       _pref="$_pref#$_index " _run_entry || ext=$?
       if [[ $ext != 0 ]]; then
-        if [[ -n $_continue ]]; then
-          _info " Continuing due to option (-c)"
-          has_err=$ext
-        elif [[ $ext == 2 ]]; then
-          _info " Stopping due to dry run (-n)"
-          return $ext
-        else
-          _info " Aborting due to failed entry execution"
+        has_err=$ext
+
+        if [[ -n $_fail_fast ]]; then
+          _info " Aborting due to fail fast option (-f)"
           return $ext
         fi
+      fi
+      if [[ -z $_no_print && -n $_print_manifest ]]; then
+        echo "$_manifest"
+      fi
+
+      if [[ -z $_no_print && -n $_print_files ]]; then
+        realpath "${_files[@]}"
       fi
     done
     if [[ -n $has_err ]]; then
@@ -251,10 +250,10 @@ _main() {
 
     _run_manifest || ext=$?
     if [[ $ext != 0 ]]; then
-      if [[ -n $_continue ]]; then
-        has_err=$ext
-      else
+      if [[ -n $_fail_fast ]]; then
         return $ext
+      else
+        has_err=$ext
       fi
     fi
   done <<<"$_manifests"
@@ -264,13 +263,14 @@ _main() {
   fi
 }
 
-while getopts he:clmqnd opt; do
+while getopts he:uflmqnd opt; do
   case $opt in
     h|\?) _usage;;
     e) _only_entries+=("$OPTARG");;
-    c) _continue=1;;
-    l) _print=1; _print_files=1;;
-    m) _print=1; _print_manifest=1;;
+    f) _fail_fast=1;;
+    l) _print_files=1;;
+    m) _print_manifest=1;;
+    u) _updated=1;;
     q) _quiet=1;;
     n) _dry=1;;
     d) _debug=1;;

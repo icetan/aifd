@@ -15,9 +15,10 @@ Usage: aifd [OPTIONS] [FILES]
 Options:
     -h        Show this message
     -e INDEX  Run specific entry
-    -c        Continue on entry failures
+    -f        Fail fast, halt on entry failure
     -l        Print input file paths
     -m        Print manifest file path
+    -u        Print only files from succesfull entries (use with -l and -m)
     -q        Quiet
     -n        Dry run
     -d        Debug output
