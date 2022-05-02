@@ -1,14 +1,14 @@
 - cmd: |
     export SB_STYLE=sh
     { nix run --inputs-from . src-block < aifd; } 1<> aifd
-  files:
+  required_files:
   - aifd
   - usage.txt
-  sha: e69794cecc5587bdf38382d6d748f21e1e703d792dc7660b6925bbaf09887b6f
+  sha: d5fd6bb2aeeb0a7669262dd0cfe5f3eeda98de4754138734607a6ae6f4374c90
 - cmd: |
     export SB_STYLE=md
     { nix run --inputs-from . src-block < README.md; } 1<> README.md
-  files:
+  required_files:
   - README.md
   - usage.txt
   sha: 5e3259f6de7ff9c0f951de2697f60a73fdbc5d9f6a0a14557b329e77bf58e336

@@ -42,18 +42,38 @@ __pref() {
 }
 
 _sha() {
-  cat "$@" 2> >(_err $(cat /dev/stdin)) | sha256sum | cut -d " " -f1
+  cat "$@" 2>/dev/null | sha256sum | cut -d " " -f1
 }
 
 _run_entry() {
+  local ignore
   local sha
   local new_sha
   local cmd
   local files_rel
+  local success
   local ext=0
   local pref=$_pref
 
   _read_entry
+
+  ignore=$(dasel select -r json --plain --null ".ignore" <<<"$_entry_json")
+  if [[ $ignore == "true" || $ignore == "1" ]]; then
+    _info "Ignoring due to property 'ignore=$ignore'"
+    return
+  fi
+
+  success=$(dasel select -r json --plain --null ".success" <<<"$_entry_json")
+  if _read_required_files; then :
+  else
+    if [[ $success == "true" || $success == "1" ]]; then
+      _info "Continuing due to property 'success=$success'"
+      return
+    else
+      return 1
+    fi
+  fi
+
   _read_files
 
   if [[ -n $_print_files ]]; then
@@ -75,8 +95,7 @@ _run_entry() {
   _pref="$pref< ${files_rel[@]}: "
 
   sha=$(dasel select -r json --plain --null ".sha" <<<"$_entry_json")
-  new_sha=$(_sha "${_files[@]}" <(echo "$cmd")) || return $?
-
+  new_sha=$(_sha "${_files[@]}" <(echo "$cmd"))
   if [[ $sha != $new_sha ]]; then
     if [[ -n $_dry ]]; then
       _info "Has changes, doing nothing due to dry run (-n)"
@@ -91,27 +110,51 @@ _run_entry() {
     if [[ $ext == 0 ]]; then
       # Re-calculate input file hash again after run if they have changed
       # during command execution.
-      new_sha=$(_sha "${_files[@]}" <(echo "$cmd"))
-      if [[ $? == 0 ]] && dasel put string -f "$_manifest" ".[$_index].sha" "$new_sha"; then :
+      new_sha=$(_sha "${_files[@]}" <(echo "$cmd")) || true
+      if dasel put string -f "$_manifest" ".[$_index].sha" "$new_sha"; then :
       else
         _err "Failed to update manifest file '$_manifest'"
         return 1
       fi
     else
-      _err "Command failed (exit $ext)"
-      return 1
+      _info "Command FAILED (exit $ext)"
+      if [[ $success == "true" || $success == "1" ]]; then
+        _info "Continuing due to property 'success=$success'"
+        return
+      else
+        return 1
+      fi
     fi
   else
     _info "No changes"
   fi
 }
 
+_read_required_files() {
+  _required_files=($(
+    dasel select -r json --plain -m ".required_files.[*]" <<<"$_entry_json" 2>/dev/null \
+      || dasel select -r json --plain ".required_files" <<<"$_entry_json" 2>/dev/null \
+      || true
+  ))
+  for f in "${_required_files[@]}"; do
+    if [[ ! -r $f ]]; then
+      _info "Entry FAILED, required file $f doesn't exist or isn't readable"
+      return 1
+    fi
+  done
+}
+
 _read_files() {
   _files=($(
-    (dasel select -r json --plain -m ".files.[*]" <<<"$_entry_json" 2>/dev/null \
-    || dasel select -r json --plain ".files" <<<"$_entry_json" 2>/dev/null) \
-      | xargs -r -l1 sh -c 'realpath $0' 2>/dev/null | sort -u))
-  if [[ $? != 0 || -z $_files ]]; then
+    ( IFS=$'\n'
+      echo "${_required_files[*]}"
+      (dasel select -r json --plain -m ".files.[*]" <<<"$_entry_json" 2>/dev/null \
+        || dasel select -r json --plain ".files" <<<"$_entry_json" 2>/dev/null) \
+        || true
+    ) | xargs -r sh -c 'realpath $*' _ 2>/dev/null | sort -u
+  ))
+
+  if [[ -z $_files ]]; then
     _err "Couldn't read input files"
     return 1
   fi
@@ -156,7 +199,7 @@ _run_manifest() {
     for index in "${_entries[@]}"; do
       ext=0
       _index=$index
-      _pref="$_pref#$_index " _run_entry 2 || ext=$?
+      _pref="$_pref#$_index " _run_entry || ext=$?
       if [[ $ext != 0 ]]; then
         if [[ -n $_continue ]]; then
           _info " Continuing due to option (-c)"
