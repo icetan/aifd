@@ -14,11 +14,11 @@ Usage: aifd [OPTIONS] [FILES]
 
 Options:
     -h        Show this message
-    -e INDEX  Run specific entry
+    -e INDEX  Run specific entry (can be repeated)
     -f        Fail fast, halt on entry failure
     -l        Print input file paths
     -m        Print manifest file path
-    -u        Print only files from succesfull entries (use with -l and -m)
+    -u        Print only files from executed entries (use with -l and -m)
     -q        Quiet
     -n        Dry run
     -d        Debug output
@@ -27,12 +27,12 @@ Entry properties:
     cmd             Bash shell commands to execute
     required_files  Files that are required to run entry
     files           Files that are checked for changes
-    success         Don't abort on entry faliure
     ignore          Skip entry
 
 Exit codes:
-    1         Error or failure
-    2         Input files has changes
+    1         Error
+    2         Entry failed
+    3         Input file has changed (when -n)
     8         This message
 
 ```
@@ -47,7 +47,7 @@ in sync.
 cat > .aifd.yaml <<'EOF'
 - cmd: |
     yarn2nix --lockfile="$files" > yarn.nix
-  files: yarn.lock
+  required_files: yarn.lock
 EOF
 aifd
 ```

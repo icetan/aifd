@@ -13,11 +13,11 @@ Usage: $(basename "$0") [OPTIONS] [FILES]
 
 Options:
     -h        Show this message
-    -e INDEX  Run specific entry
+    -e INDEX  Run specific entry (can be repeated)
     -f        Fail fast, halt on entry failure
     -l        Print input file paths
     -m        Print manifest file path
-    -u        Print only files from succesfull entries (use with -l and -m)
+    -u        Print only files from executed entries (use with -l and -m)
     -q        Quiet
     -n        Dry run
     -d        Debug output
@@ -26,12 +26,12 @@ Entry properties:
     cmd             Bash shell commands to execute
     required_files  Files that are required to run entry
     files           Files that are checked for changes
-    success         Don't abort on entry faliure
     ignore          Skip entry
 
 Exit codes:
-    1         Error or failure
-    2         Input files has changes
+    1         Error
+    2         Entry failed
+    3         Input file has changed (when -n)
     8         This message
 "
 
@@ -59,7 +59,6 @@ _run_entry() {
   local new_sha
   local cmd
   local files_rel
-  local success
   local ext=0
   local pref=$_pref
 
@@ -77,18 +76,9 @@ _run_entry() {
     return
   fi
 
-  success=$(dasel select -r json --plain --null ".success" <<<"$_entry_json")
-  if _read_required_files; then :
-  else
-    if [[ $success == "true" || $success == "1" ]]; then
-      _info "Continuing due to property 'success=$success'"
-      return
-    else
-      return 1
-    fi
-  fi
+  _read_required_files || return $?
 
-  _read_files
+  _read_files || return $?
 
   cmd=$(dasel select -r json --plain --null ".cmd" <<<"$_entry_json")
 
@@ -105,7 +95,7 @@ _run_entry() {
   if [[ $sha != $new_sha ]]; then
     if [[ -n $_dry ]]; then
       _info "Has changes, doing nothing due to dry run (-n)"
-      return 2
+      return 3
     fi
 
     (bash -c \
@@ -119,17 +109,12 @@ _run_entry() {
       new_sha=$(_sha "${_files[@]}" <(echo "$cmd")) || true
       if dasel put string -f "$_manifest" ".[$_index].sha" "$new_sha"; then :
       else
-        _err "Failed to update manifest file '$_manifest'"
+        _err "Couldn't update manifest file '$_manifest'"
         return 1
       fi
     else
       _info "Command FAILED (exit $ext)"
-      if [[ $success == "true" || $success == "1" ]]; then
-        _info "Continuing due to property 'success=$success'"
-        return
-      else
-        return 1
-      fi
+      return 2
     fi
     _no_print=
   else 
@@ -146,7 +131,7 @@ _read_required_files() {
   for f in "${_required_files[@]}"; do
     if [[ ! -r $f ]]; then
       _info "Entry FAILED, required file $f doesn't exist or isn't readable"
-      return 1
+      return 2
     fi
   done
 }
@@ -184,8 +169,8 @@ _read_entries() {
 }
 
 _run_manifest() {
-  local has_err
   local ext=0
+  local last_ext=0
 
   if [[ ! -f $_manifest ]]; then
     _err "Can't read manifest file '$_manifest'"
@@ -200,17 +185,20 @@ _run_manifest() {
   _pref="$_manifest_rel"
   (cd "$_manifest_dir"
     for index in "${_entries[@]}"; do
-      ext=0
+      last_ext=0
       _index=$index
-      _pref="$_pref#$_index " _run_entry || ext=$?
-      if [[ $ext != 0 ]]; then
-        has_err=$ext
+      _pref="$_pref#$_index " _run_entry || last_ext=$?
+      if [[ $last_ext != 0 ]]; then
+        if ((ext == 0 || last_ext < ext)); then
+          ext=$last_ext
+        fi
 
         if [[ -n $_fail_fast ]]; then
           _info " Aborting due to fail fast option (-f)"
-          return $ext
+          return $last_ext
         fi
       fi
+
       if [[ -z $_no_print && -n $_print_manifest ]]; then
         echo "$_manifest"
       fi
@@ -219,15 +207,14 @@ _run_manifest() {
         realpath "${_files[@]}"
       fi
     done
-    if [[ -n $has_err ]]; then
-      return $has_err
-    fi
+
+    return $ext
   )
 }
 
 _main() {
+  local last_ext=0
   local ext=0
-  local has_err
 
   if [[ -z $_args ]]; then
     _err "No manifest files given"
@@ -245,22 +232,20 @@ _main() {
   fi
 
   while read -r manifest; do
-    ext=0
+    last_ext=0
     _manifest=$manifest
 
-    _run_manifest || ext=$?
-    if [[ $ext != 0 ]]; then
+    _run_manifest || last_ext=$?
+    if [[ $last_ext != 0 ]]; then
       if [[ -n $_fail_fast ]]; then
-        return $ext
-      else
-        has_err=$ext
+        return $last_ext
+      elif ((ext == 0 || last_ext < ext)); then
+          ext=$last_ext
       fi
     fi
   done <<<"$_manifests"
 
-  if [[ -n $has_err ]]; then
-    return $has_err
-  fi
+  return $ext
 }
 
 while getopts he:uflmqnd opt; do
