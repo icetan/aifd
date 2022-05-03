@@ -46,7 +46,7 @@ in sync.
 ```sh
 cat > .aifd.yaml <<'EOF'
 - cmd: |
-    yarn2nix --lockfile="$files" > yarn.nix
+    yarn2nix --lockfile=yarn.lock > yarn.nix
   required_files: yarn.lock
 EOF
 aifd
