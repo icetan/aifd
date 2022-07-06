@@ -127,7 +127,7 @@ _read_required_files() {
     (dasel select -r json --plain -m ".required_files.[*]" <<<"$_entry_json" 2>/dev/null \
       || dasel select -r json --plain ".required_files" <<<"$_entry_json" 2>/dev/null \
       || true
-    ) | xargs -r sh -c 'realpath $*' _ 2>/dev/null
+    ) | xargs -r sh -c 'realpath "$@"' _ 2>/dev/null
   ))
   for f in "${_required_files[@]}"; do
     if [[ ! -r $f ]]; then
@@ -142,7 +142,7 @@ _read_files() {
     (dasel select -r json --plain -m ".files.[*]" <<<"$_entry_json" 2>/dev/null \
       || dasel select -r json --plain ".files" <<<"$_entry_json" 2>/dev/null \
       || true
-    ) | xargs -r sh -c 'realpath $*' _ 2>/dev/null
+    ) | xargs -r sh -c 'realpath "$@"' _ 2>/dev/null
   ))
   _all_files=($(
     ( IFS=$'\n'
@@ -208,7 +208,7 @@ _run_manifest() {
         echo "$_manifest"
       fi
 
-      if [[ -z $_no_print && -n $_print_files ]]; then
+      if [[ -z $_no_print && -n $_print_files && -n $_all_files ]]; then
         realpath "${_all_files[@]}"
       fi
     done
