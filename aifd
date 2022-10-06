@@ -96,6 +96,8 @@ _run_entry() {
     if [[ -n $_dry ]]; then
       _info "Has changes, doing nothing due to dry run (-n)"
       return 3
+    else
+      _info "Executing"
     fi
 
     (bash -c \
