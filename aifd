@@ -142,7 +142,7 @@ _read_files() {
     (dasel select -r json --plain -m ".files.[*]" <<<"$_entry_json" 2>/dev/null \
       || dasel select -r json --plain ".files" <<<"$_entry_json" 2>/dev/null \
       || true
-    ) | xargs -r sh -c 'realpath "$@"' _ 2>/dev/null
+    ) | xargs -r sh -c 'realpath -qe "$@"' _ 2>/dev/null
   ))
   _all_files=($(
     ( IFS=$'\n'
