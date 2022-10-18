@@ -58,7 +58,6 @@ _run_entry() {
   local sha
   local new_sha
   local cmd
-  local files_rel
   local ext=0
   local pref=$_pref
 
@@ -87,8 +86,7 @@ _run_entry() {
     return 1
   fi
 
-  files_rel=($(realpath --relative-to="$_manifest_dir" "${_all_files[@]}"))
-  _pref="$pref< ${files_rel[@]}: "
+  _pref="$pref< $(realpath --relative-to="$_manifest_dir" "${_all_files[@]}" | tr '\n' ' '): "
 
   sha=$(dasel select -r json --plain --null ".sha" <<<"$_entry_json")
   new_sha=$(_sha "${_all_files[@]}" <(echo "$cmd"))
@@ -144,7 +142,7 @@ _read_files() {
     (dasel select -r json --plain -m ".files.[*]" <<<"$_entry_json" 2>/dev/null \
       || dasel select -r json --plain ".files" <<<"$_entry_json" 2>/dev/null \
       || true
-    ) | xargs -r sh -c 'realpath -qe "$@"' _ 2>/dev/null
+    ) | xargs -r sh -c 'realpath -q "$@"' _ 2>/dev/null
   ))
   _all_files=($(
     ( IFS=$'\n'
@@ -154,7 +152,7 @@ _read_files() {
   ))
 
   if [[ -z $_all_files ]]; then
-    _err "Couldn't read input files"
+    _err "No files specifed"
     return 1
   fi
 }
