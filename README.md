@@ -22,6 +22,7 @@ Options:
     -q        Quiet
     -n        Dry run
     -d        Debug output
+    -s        Debug hashing of files
 
 Entry properties:
     cmd             Bash shell commands to execute

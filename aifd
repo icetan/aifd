@@ -21,6 +21,7 @@ Options:
     -q        Quiet
     -n        Dry run
     -d        Debug output
+    -s        Debug hashing of files
 
 Entry properties:
     cmd             Bash shell commands to execute
@@ -90,6 +91,16 @@ _run_entry() {
 
   sha=$(dasel select -r json --plain --null ".sha" <<<"$_entry_json")
   new_sha=$(_sha "${_all_files[@]}" <(echo "$cmd"))
+
+  if [[ -n $_debug_sha ]]; then
+    local debug_sha
+    for x in "${_all_files[@]}"; do
+      debug_sha+="$x=$(_sha "$x"):"
+    done
+    debug_sha+="\$cmd=$(_sha <(echo "$cmd"))"
+    dasel put string -f "$_manifest" ".[$_index].debug_sha" "$debug_sha"
+  fi
+
   if [[ $sha != $new_sha ]]; then
     if [[ -n $_dry ]]; then
       _info "Has changes, doing nothing due to dry run (-n)"
@@ -145,10 +156,7 @@ _read_files() {
     ) | xargs -r sh -c 'realpath -q "$@"' _ 2>/dev/null
   ))
   _all_files=($(
-    ( IFS=$'\n'
-      echo "${_required_files[*]}"
-      echo "${_files[*]}"
-    ) | sort -u
+    printf '%s\n' "${_required_files[@]}" "${_files[@]}" | LC_ALL=C sort -u
   ))
 
   if [[ -z $_all_files ]]; then
@@ -226,7 +234,7 @@ _main() {
     return 1
   fi
 
-  if _manifests=$(realpath "${_args[@]}" | sort -ru); then :
+  if _manifests=$(realpath "${_args[@]}" | LC_ALL=C sort -ru); then :
   else
     _err "Can't resolve manifest files ${_args[*]}"
   fi
@@ -253,7 +261,7 @@ _main() {
   return $ext
 }
 
-while getopts he:uflmqnd opt; do
+while getopts he:uflmqnds opt; do
   case $opt in
     h|\?) _usage;;
     e) _only_entries+=("$OPTARG");;
@@ -264,6 +272,7 @@ while getopts he:uflmqnd opt; do
     q) _quiet=1;;
     n) _dry=1;;
     d) _debug=1;;
+    s) _debug_sha=1;;
   esac
 done
 shift $((OPTIND - 1))

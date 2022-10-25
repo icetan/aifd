@@ -4,11 +4,11 @@
   required_files:
   - aifd
   - usage.txt
-  sha: bff229ce752b39c3a993f5ca83e222c6f1837a3b0297935dc50db8227b91653a
+  sha: 7f97239bd52da9aa12e8415dce06c9941a9213824376075867659533cc6942c4
 - cmd: |
     export SB_STYLE=md
     { nix run --inputs-from . src-block < README.md; } 1<> README.md
   required_files:
   - README.md
   - usage.txt
-  sha: 6fb5429a4dc232eb7960946452a86172f6047f05678b8266d6e4337e52d00919
+  sha: 07834450c148bc0a41aeb14d1e83f9065d74c4ae4acec6b00e5270518498cf50
