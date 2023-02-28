@@ -134,12 +134,10 @@ _run_entry() {
 }
 
 _read_required_files() {
-  _required_files=($(
-    (dasel -r json -w - ".required_files.all()" <<<"$_entry_json" 2>/dev/null \
-      || dasel -r json -w - ".required_files" <<<"$_entry_json" 2>/dev/null \
-      || true
-    ) | xargs -r sh -c 'realpath "$@"' _ 2>/dev/null
-  ))
+  local files=($(dasel -r json -w - ".required_files.all()" <<<"$_entry_json"))
+  [[ -n $files ]] || files=($(dasel -r json -w - ".required_files" <<<"$_entry_json"))
+  _required_files=($(realpath "${files[@]}" 2>/dev/null))
+
   for f in "${_required_files[@]}"; do
     if [[ ! -r $f ]]; then
       _info "Entry FAILED, required file $f doesn't exist or isn't readable"
@@ -149,12 +147,10 @@ _read_required_files() {
 }
 
 _read_files() {
-  _files=($(
-    (dasel -r json -w - ".files.all()" <<<"$_entry_json" 2>/dev/null \
-      || dasel -r json -w - ".files" <<<"$_entry_json" 2>/dev/null \
-      || true
-    ) | xargs -r sh -c 'realpath -qe "$@"' _ 2>/dev/null
-  ))
+  local files=($(dasel -r json -w - ".files.all()" <<<"$_entry_json"))
+  [[ -n $files ]] || files=($(dasel -r json -w - ".files" <<<"$_entry_json"))
+  _files=($(realpath "${files[@]}" 2>/dev/null))
+
   _all_files=($(
     printf '%s\n' "${_required_files[@]}" "${_files[@]}" | LC_ALL=C sort -u
   ))
