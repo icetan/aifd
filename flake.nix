@@ -9,23 +9,24 @@
 
   outputs = { self, nixpkgs, ... }:
     let
-      overlay = final: prev: {
-        aifd = import ./. { pkgs = prev; };
-      };
+      call = pkgs: pkgs.callPackage ./. { };
 
-      call = system:
+      perSystem = system:
         let
           pkgs = import nixpkgs { inherit system; };
+          aifd = call pkgs;
         in
-        rec {
-          aifd = import ./. { inherit pkgs; };
+        {
+          inherit aifd;
           default = aifd;
         };
 
       packages = builtins.foldl'
-        (acc: system: acc // { ${system} = call system; })
+        (acc: system: acc // { ${system} = perSystem system; })
         { }
         [ "aarch64-darwin" "aarch64-linux" "i686-linux" "x86_64-darwin" "x86_64-linux" ];
+
+      overlay = final: prev: { aifd = call prev; };
     in
     {
       inherit packages;

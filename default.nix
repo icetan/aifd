@@ -1,16 +1,13 @@
-{ pkgs
-, ...
-}: with pkgs;
+{ lib, writeShellScriptBin
+, coreutils, findutils, gnused, dasel, bash
+}:
 
 let
-  bins = [ coreutils findutils gnused dasel ];
+  bins = [ coreutils findutils gnused dasel bash ];
 in
-runCommand "aifd" {
-  buildInputs = [ bash makeWrapper ] ++ bins;
-  execPath = "/bin/aifd";
-} ''
-  mkdir -p $out/bin
-  cp ${./aifd} $out/bin/aifd
-  wrapProgram $out/bin/aifd --prefix PATH : ${lib.makeBinPath bins}
-  patchShebangs $out/bin
-''
+(writeShellScriptBin "aifd" ''
+  PATH="${lib.makeBinPath bins}:''${PATH:+:$PATH}"
+  ${builtins.readFile ./aifd}
+'').overrideAttrs (old: {
+  buildInputs = (old.buildInputs or []) ++ bins;
+})

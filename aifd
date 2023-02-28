@@ -70,7 +70,7 @@ _run_entry() {
 
   _read_entry
 
-  ignore=$(dasel select -r json --plain --null ".ignore" <<<"$_entry_json")
+  ignore=$(dasel -r json -w - ".ignore" <<<"$_entry_json")
   if [[ $ignore == "true" || $ignore == "1" ]]; then
     _info "Ignoring due to property 'ignore=$ignore'"
     return
@@ -80,7 +80,7 @@ _run_entry() {
 
   _read_files || return $?
 
-  cmd=$(dasel select -r json --plain --null ".cmd" <<<"$_entry_json")
+  cmd=$(dasel -r json -w - ".cmd" <<<"$_entry_json")
 
   if [[ $cmd == "null" ]]; then
     _err "No command specified"
@@ -89,7 +89,7 @@ _run_entry() {
 
   _pref="$pref< $(realpath --relative-to="$_manifest_dir" "${_all_files[@]}" | tr '\n' ' '): "
 
-  sha=$(dasel select -r json --plain --null ".sha" <<<"$_entry_json")
+  sha=$(dasel -r json -w - ".sha" <<<"$_entry_json")
   new_sha=$(_sha "${_all_files[@]}" <(echo "$cmd"))
 
   if [[ -n $_debug_sha ]]; then
@@ -98,7 +98,7 @@ _run_entry() {
       debug_sha+="$x=$(_sha "$x"):"
     done
     debug_sha+="\$cmd=$(_sha <(echo "$cmd"))"
-    dasel put string -f "$_manifest" ".[$_index].debug_sha" "$debug_sha"
+    dasel put -t string -f "$_manifest" -v "$debug_sha" ".[$_index].debug_sha"
   fi
 
   if [[ $sha != $new_sha ]]; then
@@ -118,7 +118,7 @@ _run_entry() {
       # Re-calculate input file hash again after run if they have changed
       # during command execution.
       new_sha=$(_sha "${_all_files[@]}" <(echo "$cmd")) || true
-      if dasel put string -f "$_manifest" ".[$_index].sha" "$new_sha"; then :
+      if dasel put -t string -f "$_manifest" -v "$new_sha" ".[$_index].sha"; then :
       else
         _err "Couldn't update manifest file '$_manifest'"
         return 1
@@ -128,15 +128,15 @@ _run_entry() {
       return 2
     fi
     _no_print=
-  else 
+  else
     _info "No changes"
   fi
 }
 
 _read_required_files() {
   _required_files=($(
-    (dasel select -r json --plain -m ".required_files.[*]" <<<"$_entry_json" 2>/dev/null \
-      || dasel select -r json --plain ".required_files" <<<"$_entry_json" 2>/dev/null \
+    (dasel -r json -w - ".required_files.all()" <<<"$_entry_json" 2>/dev/null \
+      || dasel -r json -w - ".required_files" <<<"$_entry_json" 2>/dev/null \
       || true
     ) | xargs -r sh -c 'realpath "$@"' _ 2>/dev/null
   ))
@@ -150,8 +150,8 @@ _read_required_files() {
 
 _read_files() {
   _files=($(
-    (dasel select -r json --plain -m ".files.[*]" <<<"$_entry_json" 2>/dev/null \
-      || dasel select -r json --plain ".files" <<<"$_entry_json" 2>/dev/null \
+    (dasel -r json -w - ".files.all()" <<<"$_entry_json" 2>/dev/null \
+      || dasel -r json -w - ".files" <<<"$_entry_json" 2>/dev/null \
       || true
     ) | xargs -r sh -c 'realpath -qe "$@"' _ 2>/dev/null
   ))
@@ -166,8 +166,8 @@ _read_files() {
 }
 
 _read_entry() {
-  _entry_json=$(dasel select -w json -f "$_manifest" ".[$_index]" 2>/dev/null)
-  if [[ $? != 0 ]]; then
+  _entry_json=$(dasel -w json -f "$_manifest" "index($_index)" 2>/dev/null)
+  if [[ -z $_entry_json ]]; then
     _err "Couldn't get entry #$_index"
     return 1
   fi
@@ -177,7 +177,7 @@ _read_entries() {
   if [[ -n $_only_entries ]]; then
     _entries=("${_only_entries[@]}")
   else
-    _entries=($(dasel select -m --plain -f "$_manifest" '.-'))
+    _entries=($(dasel -w - -f "$_manifest" 'all().key()'))
   fi
 }
 
